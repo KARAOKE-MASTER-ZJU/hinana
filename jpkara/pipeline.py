@@ -148,6 +148,7 @@ class Pipeline:
 
         # 4. 读取 yohane 输出，预计算 k_flat
         yohane_ass = Path(tmp_ass).read_text(encoding="utf-8")
+        # yohane 输出的 k 时值行是 Dialogue，参考文本行是 Comment，只取 Dialogue
         yohane_dialogues = [l for l in yohane_ass.splitlines() if l.startswith("Dialogue:")]
 
         n = min(len(yohane_dialogues), len(jp_lines))
@@ -194,9 +195,13 @@ class Pipeline:
                 else:  # kana
                     new_texts.append(build_kana(cm, kf))
 
-            # 重写 ASS：从 yohane 输出的非 Dialogue 行取头部，
-            # 然后按原始顺序插入 pass-through 行和 yohane 行
-            header_lines = [l for l in yohane_ass.splitlines() if not l.startswith("Dialogue:")]
+            # 重写 ASS：取 yohane 头部（Script Info/Styles/[Events]/Format 行），
+            # 截止到第一个 Dialogue:/Comment: 行（yohane 的 Comment 参考行不保留）
+            header_lines = []
+            for _l in yohane_ass.splitlines():
+                if _l.startswith("Dialogue:") or _l.startswith("Comment:"):
+                    break
+                header_lines.append(_l)
             out_lines = list(header_lines)
 
             yohane_idx = 0  # 指向 new_texts / yohane_dialogues
