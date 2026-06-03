@@ -31,8 +31,8 @@ def main() -> None:
         help="Optional romaji lyrics file for simple pairing mode (auto-generate if omitted)",
     )
     parser.add_argument(
-        "--mode", "-m", choices=["furigana", "kana", "romaji"], default="furigana",
-        help="Output annotation mode (default: furigana)",
+        "--mode", "-m", default="furigana",
+        help="Output annotation mode(s), comma-separated: furigana,kana,romaji (default: furigana)",
     )
     parser.add_argument(
         "--output", "-o", default=None,
@@ -89,6 +89,13 @@ def main() -> None:
         logging.getLogger(__name__).info("Refreshing RL dictionary...")
         RLDictionary().reload()
 
+    # Parse mode(s)
+    valid = {"furigana", "kana", "romaji"}
+    modes = [m.strip() for m in args.mode.split(",") if m.strip()]
+    bad = [m for m in modes if m not in valid]
+    if bad:
+        parser.error(f"Unknown mode(s): {bad!r}. Choose from: furigana, kana, romaji")
+
     # Run pipeline
     from jpkara.pipeline import Pipeline
     pipeline = Pipeline(
@@ -98,14 +105,15 @@ def main() -> None:
         hf_token=args.hf_token,
         yohane_dir=args.yohane_dir,
     )
-    pipeline.run(
+    written = pipeline.run(
         song=args.song,
         jp_lines=jp_lines,
         output_path=output,
-        mode=args.mode,
+        mode=modes[0] if len(modes) == 1 else modes,
         romaji_lines=romaji_lines,
     )
-    print(f"Saved: {output}")
+    for f in written:
+        print(f"Saved: {f}")
 
 
 if __name__ == "__main__":

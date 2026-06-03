@@ -11,7 +11,7 @@ from __future__ import annotations
 import logging
 import os
 from pathlib import Path
-from typing import List, Literal, Optional
+from typing import List, Literal, Optional, Union
 
 from .reading.analyzer import ReadingAnalyzer
 from .reading.llm import LLMReadingClient
@@ -76,22 +76,25 @@ class Pipeline:
         song: str,
         jp_lines: List[str],
         output_path: str,
-        mode: OutputMode = "furigana",
+        mode: Union[OutputMode, List[OutputMode]] = "furigana",
         romaji_lines: Optional[List[str]] = None,
-    ) -> str:
+    ) -> List[str]:
         """
         完整运行管线。
 
         Args:
             song: 音频/视频文件或 URL
             jp_lines: 日语歌词（每行一个）
-            output_path: 输出 .ass 路径
-            mode: 输出格式 furigana / kana / romaji
+            output_path: 输出 .ass 路径（多 mode 时加 _furigana/_kana/_romaji 后缀）
+            mode: 输出格式，支持单个或列表，如 ["furigana", "romaji"]
             romaji_lines: 用户提供的罗马音（simple pairing 模式）
 
         Returns:
-            output_path
+            实际写出的文件路径列表
         """
+        modes: List[OutputMode] = [mode] if isinstance(mode, str) else list(mode)
+        multi = len(modes) > 1
+
         # 1. 分析读音（RL→LLM→pykakasi）
         logger.info("[pipeline] analyzing readings (%d lines)...", len(jp_lines))
         char_moras_list = self.analyzer.analyze_lines(jp_lines)
@@ -108,8 +111,9 @@ class Pipeline:
             logger.info("[pipeline] generating romaji from analyzer...")
             romaji_lines = self.analyzer.to_romaji_lines(jp_lines)
 
-        # 3. yohane 强制对齐
-        tmp_ass = output_path if mode == "romaji" else output_path.replace(".ass", "_tmp.ass")
+        # 3. yohane 强制对齐（始终输出到临时文件）
+        stem = output_path[:-4] if output_path.endswith(".ass") else output_path
+        tmp_ass = stem + "_tmp.ass"
         run_yohane(
             song=song,
             romaji_lines=romaji_lines,
@@ -119,11 +123,7 @@ class Pipeline:
             yohane_dir=self.yohane_dir,
         )
 
-        if mode == "romaji":
-            logger.info("[pipeline] romaji mode, done: %s", output_path)
-            return output_path
-
-        # 4. 读取 yohane 输出并重写为目标格式
+        # 4. 读取 yohane 输出，预计算 k_flat 和 char_moras 对
         yohane_ass = Path(tmp_ass).read_text(encoding="utf-8")
         dialogue_lines = [l for l in yohane_ass.splitlines() if l.startswith("Dialogue:")]
 
@@ -134,42 +134,57 @@ class Pipeline:
                 len(dialogue_lines), len(jp_lines), n,
             )
 
-        new_texts: List[str] = []
+        k_flats = []
         for i in range(n):
             dl = dialogue_lines[i]
             parts = dl.split(",", 9)
             yohane_text = parts[9].strip() if len(parts) == 10 else ""
-            k_flat = parse_k_flat(yohane_text)
-            cm = char_moras_list[i]
+            k_flats.append(parse_k_flat(yohane_text))
 
-            if len(cm) != len(k_flat):
-                logger.debug(
-                    "[pipeline] line %d mora mismatch chars=%d k=%d",
-                    i, len(cm), len(k_flat),
-                )
+        written: List[str] = []
 
-            if mode == "furigana":
-                new_texts.append(build_furigana(cm, k_flat))
-            else:  # kana
-                new_texts.append(build_kana(cm, k_flat))
+        # 5. 对每个 mode 写出文件
+        for m in modes:
+            out = (stem + f"_{m}.ass") if multi else output_path
 
-        # 5. 重写 ASS
-        out_lines = []
-        text_idx = 0
-        for line in yohane_ass.splitlines():
-            if line.startswith("Dialogue:") and text_idx < len(new_texts):
-                p = line.split(",", 9)
-                if len(p) == 10:
-                    p[9] = new_texts[text_idx]
-                    line = ",".join(p)
-                    text_idx += 1
-            out_lines.append(line)
+            if m == "romaji":
+                import shutil
+                shutil.copy(tmp_ass, out)
+                logger.info("[pipeline] romaji mode, saved: %s", out)
+                written.append(out)
+                continue
 
-        Path(output_path).write_text("\n".join(out_lines), encoding="utf-8")
+            new_texts: List[str] = []
+            for i in range(n):
+                cm = char_moras_list[i]
+                kf = k_flats[i]
+                if len(cm) != len(kf):
+                    logger.debug(
+                        "[pipeline] line %d mora mismatch chars=%d k=%d",
+                        i, len(cm), len(kf),
+                    )
+                if m == "furigana":
+                    new_texts.append(build_furigana(cm, kf))
+                else:  # kana
+                    new_texts.append(build_kana(cm, kf))
 
-        # 清理临时文件
-        if tmp_ass != output_path and Path(tmp_ass).exists():
+            out_lines = []
+            text_idx = 0
+            for line in yohane_ass.splitlines():
+                if line.startswith("Dialogue:") and text_idx < len(new_texts):
+                    p = line.split(",", 9)
+                    if len(p) == 10:
+                        p[9] = new_texts[text_idx]
+                        line = ",".join(p)
+                        text_idx += 1
+                out_lines.append(line)
+
+            Path(out).write_text("\n".join(out_lines), encoding="utf-8")
+            logger.info("[pipeline] %s mode, saved: %s", m, out)
+            written.append(out)
+
+        # 6. 清理临时文件
+        if Path(tmp_ass).exists():
             Path(tmp_ass).unlink()
 
-        logger.info("[pipeline] done: %s", output_path)
-        return output_path
+        return written
