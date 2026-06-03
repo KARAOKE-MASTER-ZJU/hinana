@@ -1,0 +1,26 @@
+[project]
+name = "jpkara"
+version = "0.1.0"
+description = "Japanese lyrics → k-timed furigana karaoke ASS (powered by yohane)"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.10"
+dependencies = [
+    "pykakasi>=2.2",
+    "python-dotenv>=1.0",
+    # yohane and its deps are expected to be installed in the same venv
+    # Install manually: uv pip install -e /path/to/yohane[cli]
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8", "ruff"]
+
+[project.scripts]
+jpkara = "jpkara.cli:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.ruff.lint]
+extend-select = ["I"]
