@@ -74,9 +74,16 @@ def main() -> None:
             output = str(Path(args.song).with_suffix(".ass"))
 
     # Read input files
-    jp_lines = [
-        l for l in Path(args.lyrics).read_text("utf-8").splitlines() if l.strip()
-    ]
+    if args.lyrics.lower().endswith(".ass"):
+        from jpkara.ass_reader import extract_lyrics_from_ass
+        jp_lines = extract_lyrics_from_ass(args.lyrics)
+        # drop trailing empty lines but preserve internal ones for alignment
+        while jp_lines and not jp_lines[-1]:
+            jp_lines.pop()
+    else:
+        jp_lines = [
+            l for l in Path(args.lyrics).read_text("utf-8").splitlines() if l.strip()
+        ]
     romaji_lines = None
     if args.romaji:
         romaji_lines = [
