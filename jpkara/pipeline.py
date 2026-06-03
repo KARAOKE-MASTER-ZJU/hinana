@@ -18,6 +18,7 @@ from .reading.llm import LLMReadingClient
 from .reading.rl_dict import RLDictionary
 from .ass.formatter import build_furigana, build_kana, build_romaji, parse_k_flat
 from .ass.yohane_runner import run_yohane
+from .ass.constants import JPKARA_ASS_HEADER
 
 logger = logging.getLogger(__name__)
 
@@ -195,31 +196,27 @@ class Pipeline:
                 else:  # kana
                     new_texts.append(build_kana(cm, kf))
 
-            # 重写 ASS：取 yohane 头部（Script Info/Styles/[Events]/Format 行），
-            # 截止到第一个 Dialogue:/Comment: 行（yohane 的 Comment 参考行不保留）
-            header_lines = []
-            for _l in yohane_ass.splitlines():
-                if _l.startswith("Dialogue:") or _l.startswith("Comment:"):
-                    break
-                header_lines.append(_l)
-            out_lines = list(header_lines)
+            # 用 jpkara 标准头部（aegisub-tools 兼容样式）替换 yohane 的轻量头部
+            out_lines = JPKARA_ASS_HEADER.rstrip("\n").splitlines()
 
             yohane_idx = 0  # 指向 new_texts / yohane_dialogues
             total = (len(jp_indices) + len(passthrough_map)) if source_ass else n
 
             for global_i in range(total):
                 if global_i in passthrough_map:
-                    # 非日文行：用原始 Dialogue 行（原始时间轴 + 清理后文本）
+                    # 非日文行：用原始时间轴 + 清理后文本，Effect = karaoke
                     raw = passthrough_map[global_i]
                     p = raw.split(",", 9)
                     if len(p) == 10:
                         from .ass_reader import _clean
+                        p[8] = "karaoke"
                         p[9] = _clean(p[9])
                     out_lines.append(",".join(p))
                 elif yohane_idx < len(new_texts):
-                    # 日文行：用 yohane 时间轴 + 新注音文本
+                    # 日文行：用 yohane 时间轴 + 新注音文本，Effect = karaoke
                     p = yohane_dialogues[yohane_idx].split(",", 9)
                     if len(p) == 10:
+                        p[8] = "karaoke"
                         p[9] = new_texts[yohane_idx]
                     out_lines.append(",".join(p))
                     yohane_idx += 1
