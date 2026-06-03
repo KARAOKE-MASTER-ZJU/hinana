@@ -78,6 +78,7 @@ class Pipeline:
         output_path: str,
         mode: Union[OutputMode, List[OutputMode]] = "furigana",
         romaji_lines: Optional[List[str]] = None,
+        source_ass: Optional[str] = None,
     ) -> List[str]:
         """
         完整运行管线。
@@ -95,6 +96,28 @@ class Pipeline:
         modes: List[OutputMode] = [mode] if isinstance(mode, str) else list(mode)
         multi = len(modes) > 1
 
+        # --- pass-through 支持：从 source_ass 识别非日文行，不送 yohane ---
+        # passthrough_map: {全局index: 原始 Dialogue 行}（非日文行，保留原始时间轴）
+        # jp_indices: 需要 yohane 重新对齐的行的全局 index 列表
+        passthrough_map: dict = {}
+        jp_indices: List[int] = list(range(len(jp_lines)))
+
+        if source_ass:
+            from .ass_reader import parse_ass_dialogues
+            dialogues = parse_ass_dialogues(source_ass)
+            passthrough_map = {
+                i: d.raw for i, d in enumerate(dialogues) if not d.is_japanese
+            }
+            jp_indices = [i for i, d in enumerate(dialogues) if d.is_japanese]
+            skipped = len(passthrough_map)
+            if skipped:
+                logger.info(
+                    "[pipeline] %d non-Japanese lines kept as pass-through (e.g. timestamps, English)",
+                    skipped,
+                )
+            # 只把日文行送给后续处理
+            jp_lines = [jp_lines[i] for i in jp_indices]
+
         # 1. 分析读音（RL→LLM→pykakasi）
         logger.info("[pipeline] analyzing readings (%d lines)...", len(jp_lines))
         char_moras_list = self.analyzer.analyze_lines(jp_lines)
@@ -111,7 +134,7 @@ class Pipeline:
             logger.info("[pipeline] generating romaji from analyzer...")
             romaji_lines = self.analyzer.to_romaji_lines(jp_lines)
 
-        # 3. yohane 强制对齐（始终输出到临时文件）
+        # 3. yohane 强制对齐（只对日文行）
         stem = output_path[:-4] if output_path.endswith(".ass") else output_path
         tmp_ass = stem + "_tmp.ass"
         run_yohane(
@@ -123,21 +146,20 @@ class Pipeline:
             yohane_dir=self.yohane_dir,
         )
 
-        # 4. 读取 yohane 输出，预计算 k_flat 和 char_moras 对
+        # 4. 读取 yohane 输出，预计算 k_flat
         yohane_ass = Path(tmp_ass).read_text(encoding="utf-8")
-        dialogue_lines = [l for l in yohane_ass.splitlines() if l.startswith("Dialogue:")]
+        yohane_dialogues = [l for l in yohane_ass.splitlines() if l.startswith("Dialogue:")]
 
-        n = min(len(dialogue_lines), len(jp_lines))
-        if len(dialogue_lines) != len(jp_lines):
+        n = min(len(yohane_dialogues), len(jp_lines))
+        if len(yohane_dialogues) != len(jp_lines):
             logger.warning(
                 "[pipeline] dialogue count %d != line count %d, truncating to %d",
-                len(dialogue_lines), len(jp_lines), n,
+                len(yohane_dialogues), len(jp_lines), n,
             )
 
         k_flats = []
         for i in range(n):
-            dl = dialogue_lines[i]
-            parts = dl.split(",", 9)
+            parts = yohane_dialogues[i].split(",", 9)
             yohane_text = parts[9].strip() if len(parts) == 10 else ""
             k_flats.append(parse_k_flat(yohane_text))
 
@@ -147,13 +169,15 @@ class Pipeline:
         for m in modes:
             out = (stem + f"_{m}.ass") if multi else output_path
 
-            if m == "romaji":
+            # romaji 模式：直接用 yohane 输出，但仍需插回 pass-through 行
+            if m == "romaji" and not passthrough_map:
                 import shutil
                 shutil.copy(tmp_ass, out)
                 logger.info("[pipeline] romaji mode, saved: %s", out)
                 written.append(out)
                 continue
 
+            # 计算每行新文本（yohane 重新对齐的行）
             new_texts: List[str] = []
             for i in range(n):
                 cm = char_moras_list[i]
@@ -163,21 +187,37 @@ class Pipeline:
                         "[pipeline] line %d mora mismatch chars=%d k=%d",
                         i, len(cm), len(kf),
                     )
-                if m == "furigana":
+                if m == "romaji":
+                    new_texts.append(yohane_dialogues[i].split(",", 9)[9] if len(yohane_dialogues[i].split(",", 9)) == 10 else "")
+                elif m == "furigana":
                     new_texts.append(build_furigana(cm, kf))
                 else:  # kana
                     new_texts.append(build_kana(cm, kf))
 
-            out_lines = []
-            text_idx = 0
-            for line in yohane_ass.splitlines():
-                if line.startswith("Dialogue:") and text_idx < len(new_texts):
-                    p = line.split(",", 9)
+            # 重写 ASS：从 yohane 输出的非 Dialogue 行取头部，
+            # 然后按原始顺序插入 pass-through 行和 yohane 行
+            header_lines = [l for l in yohane_ass.splitlines() if not l.startswith("Dialogue:")]
+            out_lines = list(header_lines)
+
+            yohane_idx = 0  # 指向 new_texts / yohane_dialogues
+            total = (len(jp_indices) + len(passthrough_map)) if source_ass else n
+
+            for global_i in range(total):
+                if global_i in passthrough_map:
+                    # 非日文行：用原始 Dialogue 行（原始时间轴 + 清理后文本）
+                    raw = passthrough_map[global_i]
+                    p = raw.split(",", 9)
                     if len(p) == 10:
-                        p[9] = new_texts[text_idx]
-                        line = ",".join(p)
-                        text_idx += 1
-                out_lines.append(line)
+                        from .ass_reader import _clean
+                        p[9] = _clean(p[9])
+                    out_lines.append(",".join(p))
+                elif yohane_idx < len(new_texts):
+                    # 日文行：用 yohane 时间轴 + 新注音文本
+                    p = yohane_dialogues[yohane_idx].split(",", 9)
+                    if len(p) == 10:
+                        p[9] = new_texts[yohane_idx]
+                    out_lines.append(",".join(p))
+                    yohane_idx += 1
 
             Path(out).write_text("\n".join(out_lines), encoding="utf-8")
             logger.info("[pipeline] %s mode, saved: %s", m, out)
