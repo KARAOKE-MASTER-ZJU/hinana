@@ -79,8 +79,18 @@ def hira_to_moras(hira: str) -> List[Tuple[str, str]]:
             result.append((pair, HIRA_DIGRAPHS[pair]))
             i += 2
             continue
-        # 单字
+        # 長音符 ー：重複前一個母音（piー → pii, リュー → ryuu）
         c = hira[i]
+        if c == "ー":
+            prev_vowel = "u"
+            for _, r in reversed(result):
+                if r and r[-1] in "aeiou":
+                    prev_vowel = r[-1]
+                    break
+            result.append(("ー", prev_vowel))
+            i += 1
+            continue
+        # 单字
         result.append((c, HIRA_ROMAJI.get(c, c)))
         i += 1
     return result
