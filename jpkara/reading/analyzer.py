@@ -9,7 +9,7 @@ from __future__ import annotations
 import logging
 from typing import Dict, List, Optional, Tuple
 
-from .kana import is_kanji, is_kana, kata_to_hira, hira_to_moras
+from .kana import is_kanji, is_kana, kata_to_hira, hira_to_moras, SMALL_KANA, HIRA_DIGRAPHS
 
 logger = logging.getLogger(__name__)
 
@@ -43,6 +43,22 @@ def _distribute(orig: str, hira: str, out: List[Tuple[str, str]]) -> None:
     while oi < len(orig):
         c = orig[oi]
         if is_kana(c):
+            next_c = orig[oi + 1] if oi + 1 < len(orig) else ""
+            # 拗音前瞻：当前假名 + 下一个小書き假名 → 合并成一个 mora
+            if next_c and next_c in SMALL_KANA and is_kana(next_c):
+                pair_hira = kata_to_hira(c) + kata_to_hira(next_c)
+                if pair_hira in HIRA_DIGRAPHS:
+                    # 消耗 hi 中对应的两个字符
+                    if len(hi) >= 2 and kata_to_hira(hi[0]) + kata_to_hira(hi[1]) == pair_hira:
+                        hi.pop(0); hi.pop(0)
+                    elif hi and kata_to_hira(hi[0]) == kata_to_hira(c):
+                        hi.pop(0)
+                    pair_str = c + next_c  # e.g. 'リュ', 'フォ', 'ティ'
+                    for hm, _ in hira_to_moras(pair_hira):
+                        out.append((pair_str, hm))
+                    oi += 2
+                    continue
+            # 单字假名（含 っ/ッ，hira_to_moras 已修复末尾独立っ）
             hc = kata_to_hira(c)
             if hi and kata_to_hira(hi[0]) == hc:
                 hi.pop(0)

@@ -42,6 +42,13 @@ HIRA_DIGRAPHS: dict[str, str] = {
 }
 
 
+# 小書き假名（不含っ/ッ，那是促音另行处理）
+SMALL_KANA: frozenset = frozenset(
+    "ぁぃぅぇぉゃゅょゎ"   # 平假名小書き
+    "ァィゥェォャュョヮ"   # 片假名小書き
+)
+
+
 def kata_to_hira(text: str) -> str:
     """片假名 → 平假名（在范围 ァ–ン 内的字符）。"""
     return "".join(
@@ -56,12 +63,14 @@ def hira_to_moras(hira: str) -> List[Tuple[str, str]]:
     result: List[Tuple[str, str]] = []
     i = 0
     while i < len(hira):
-        # っ 促音：借用下一个 mora 的首辅音
+        # っ 促音：借用下一个 mora 的首辅音；末尾独立时用 "t" 兜底
         if hira[i] == "っ":
             if i + 1 < len(hira):
                 nxt = hira[i+1:i+3]
                 nrom = HIRA_DIGRAPHS.get(nxt) or HIRA_ROMAJI.get(hira[i+1], "")
                 result.append(("っ", nrom[0] if nrom else "t"))
+            else:
+                result.append(("っ", "t"))
             i += 1
             continue
         # 二拍拗音

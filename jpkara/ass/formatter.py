@@ -36,7 +36,7 @@ def build_furigana(char_moras: List[Tuple[str, str]], k_flat: KFlat) -> str:
     for i in range(n):
         ch, hm = char_moras[i]
         k = k_flat[i][0]
-        if is_kanji(ch):
+        if len(ch) == 1 and is_kanji(ch):
             if ch != prev_char:
                 parts.append(f"{{\\k{k}}}{ch}|<{hm}")
             else:

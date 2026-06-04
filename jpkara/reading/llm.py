@@ -81,7 +81,7 @@ class LLMReadingClient:
         base_url: str = "",
         api_key: str = "",
         model: str = "",
-        timeout: int = 60,
+        timeout: int = 300,
         max_retries: int = 2,
     ):
         self.base_url = (base_url or os.getenv("OPENAI_BASE_URL", "")).rstrip("/")
