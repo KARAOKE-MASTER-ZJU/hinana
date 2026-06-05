@@ -1,6 +1,5 @@
-# HINANA
-
-**Hierarchical Interlinear Nihongo Annotation via Neural Alignment**
+# HINANA: **H**ierarchical **I**nterlinear **N**ihongo  **A**nnotation via **N**eural **A**lignment for Karaoke Subtitles
+<img width="225" height="225" alt="image" src="https://github.com/user-attachments/assets/c9114ce1-4651-4cb6-8940-e51a3ba5913f" />
 
 日语卡拉 OK 注音工具：输入日语歌词 + 音频，输出带振假名注音的 Aegisub `.ass` 文件。
 
