@@ -1,4 +1,6 @@
-# jpkara — 开发说明
+# HINANA — 开发说明
+
+**Hierarchical Interlinear Nihongo Annotation via Neural Alignment**
 
 ## 项目目的
 

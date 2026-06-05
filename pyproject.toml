@@ -1,7 +1,7 @@
 [project]
-name = "jpkara"
+name = "hinana"
 version = "0.1.0"
-description = "Japanese lyrics → k-timed furigana karaoke ASS (powered by yohane)"
+description = "Hierarchical Interlinear Nihongo Annotation via Neural Alignment — 日语卡拉OK注音工具"
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.10"
@@ -16,7 +16,7 @@ dependencies = [
 dev = ["pytest>=8", "ruff"]
 
 [project.scripts]
-jpkara = "jpkara.cli:main"
+hinana = "jpkara.cli:main"
 
 [build-system]
 requires = ["hatchling"]
