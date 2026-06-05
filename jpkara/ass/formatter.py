@@ -53,6 +53,30 @@ def build_kana(char_moras: List[Tuple[str, str]], k_flat: KFlat) -> str:
     return "".join(f"{{\\k{k_flat[i][0]}}}{char_moras[i][1]}" for i in range(n))
 
 
+def build_kanji_romaji(char_moras: List[Tuple[str, str]], k_flat: KFlat) -> str:
+    """
+    汉字+罗马音注音格式（结构同 furigana，reading 直接取 yohane 输出的罗马音）:
+    - 漢字首 mora → {\\kN}字|<ro
+    - 漢字续 mora → {\\kN}#|<ma
+    - 假名 mora   → {\\kN}か
+    """
+    n = min(len(char_moras), len(k_flat))
+    parts = []
+    prev_char = None
+    for i in range(n):
+        ch, _ = char_moras[i]
+        k, rom = k_flat[i]
+        if len(ch) == 1 and is_kanji(ch):
+            if ch != prev_char:
+                parts.append(f"{{\\k{k}}}{ch}|<{rom}")
+            else:
+                parts.append(f"{{\\k{k}}}#|<{rom}")
+        else:
+            parts.append(f"{{\\k{k}}}{ch}")
+        prev_char = ch
+    return "".join(parts)
+
+
 def build_romaji(k_flat: KFlat) -> str:
-    """重建 yohane 原始罗马音输出（保留空格分词）。"""
+    """重建 yohane 原始罗马音输出（纯罗马字，兼容旧接口）。"""
     return "".join(f"{{\\k{k}}}{m}" for k, m in k_flat)

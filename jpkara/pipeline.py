@@ -16,7 +16,7 @@ from typing import List, Literal, Optional, Union
 from .reading.analyzer import ReadingAnalyzer
 from .reading.llm import LLMReadingClient
 from .reading.rl_dict import RLDictionary
-from .ass.formatter import build_furigana, build_kana, build_romaji, parse_k_flat
+from .ass.formatter import build_furigana, build_kana, build_romaji, build_kanji_romaji, parse_k_flat
 from .ass.yohane_runner import run_yohane
 from .ass.constants import JPKARA_ASS_HEADER
 
@@ -103,6 +103,9 @@ class Pipeline:
         passthrough_map: dict = {}
         jp_indices: List[int] = list(range(len(jp_lines)))
 
+        # actor_map: {全局index: actor_str} 用于透传 Name 字段
+        actor_map: dict = {}
+
         if source_ass:
             from .ass_reader import parse_ass_dialogues
             dialogues = parse_ass_dialogues(source_ass)
@@ -110,6 +113,7 @@ class Pipeline:
                 i: d.raw for i, d in enumerate(dialogues) if not d.is_japanese
             }
             jp_indices = [i for i, d in enumerate(dialogues) if d.is_japanese]
+            actor_map = {i: d.actor for i, d in enumerate(dialogues)}
             skipped = len(passthrough_map)
             if skipped:
                 logger.info(
@@ -171,14 +175,6 @@ class Pipeline:
         for m in modes:
             out = (stem + f"_{m}.ass") if multi else output_path
 
-            # romaji 模式：直接用 yohane 输出，但仍需插回 pass-through 行
-            if m == "romaji" and not passthrough_map:
-                import shutil
-                shutil.copy(tmp_ass, out)
-                logger.info("[pipeline] romaji mode, saved: %s", out)
-                written.append(out)
-                continue
-
             # 计算每行新文本（yohane 重新对齐的行）
             new_texts: List[str] = []
             for i in range(n):
@@ -189,10 +185,10 @@ class Pipeline:
                         "[pipeline] line %d mora mismatch chars=%d k=%d",
                         i, len(cm), len(kf),
                     )
-                if m == "romaji":
-                    new_texts.append(yohane_dialogues[i].split(",", 9)[9] if len(yohane_dialogues[i].split(",", 9)) == 10 else "")
-                elif m == "furigana":
+                if m == "furigana":
                     new_texts.append(build_furigana(cm, kf))
+                elif m == "romaji":
+                    new_texts.append(build_kanji_romaji(cm, kf))
                 else:  # kana
                     new_texts.append(build_kana(cm, kf))
 
@@ -209,6 +205,8 @@ class Pipeline:
                     p = raw.split(",", 9)
                     if len(p) == 10:
                         from .ass_reader import _clean
+                        if global_i in actor_map:
+                            p[4] = actor_map[global_i]
                         p[8] = "karaoke"
                         p[9] = _clean(p[9])
                     out_lines.append(",".join(p))
@@ -216,6 +214,9 @@ class Pipeline:
                     # 日文行：用 yohane 时间轴 + 新注音文本，Effect = karaoke
                     p = yohane_dialogues[yohane_idx].split(",", 9)
                     if len(p) == 10:
+                        global_idx = jp_indices[yohane_idx] if source_ass else global_i
+                        if global_idx in actor_map:
+                            p[4] = actor_map[global_idx]
                         p[8] = "karaoke"
                         p[9] = new_texts[yohane_idx]
                     out_lines.append(",".join(p))

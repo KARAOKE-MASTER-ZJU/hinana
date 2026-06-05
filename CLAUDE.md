@@ -51,6 +51,14 @@ jpkara song.mp4 lyrics.txt --mode furigana
   - 假名 mora：`{\kN}か`
 - mora 数量不匹配时截断（WARNING 日志）
 
+## 参考项目
+
+- **StrangeUtaGame**：https://github.com/Cloudac7/StrangeUtaGame
+  - 同类型卡拉 OK 注音工具，有 GUI（PyQt6 + Fluent Design）
+  - 注音层：FugashiAnalyzer（MeCab + unidic_lite）为基础，`llm_ruby.py` 作为独立引擎覆盖整首
+  - RL 词典通过 `network_dictionary.py` 管理，`source_order` 用户可配置，是**可叠加资源层**而非串联 fallback
+  - 关键参考文件：`src/strange_uta_game/backend/infrastructure/parsers/` 下的 `ruby_analyzer.py` / `llm_ruby.py` / `rl_dictionary.py`
+
 ## 已知问题
 
 - 复合词的汉字 mora 分配（如 見守る みまもる）在字典读音与词典读音不同时可能有偏差

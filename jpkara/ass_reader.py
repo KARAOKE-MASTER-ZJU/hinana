@@ -48,6 +48,7 @@ def _has_japanese(text: str) -> bool:
 class AssDialogue:
     raw: str           # 原始行（含完整时间轴）
     text: str          # 清理后歌词文本
+    actor: str         # Name 字段（说话人）
     is_japanese: bool  # False → 不送 yohane，保留原始时间轴
 
 
@@ -61,8 +62,9 @@ def parse_ass_dialogues(path: str) -> List[AssDialogue]:
         if not raw.startswith("Dialogue:"):
             continue
         parts = raw.split(",", 9)
+        actor = parts[4].strip() if len(parts) >= 5 else ""
         text = _clean(parts[9] if len(parts) == 10 else "")
-        result.append(AssDialogue(raw=raw, text=text, is_japanese=_has_japanese(text)))
+        result.append(AssDialogue(raw=raw, text=text, actor=actor, is_japanese=_has_japanese(text)))
     return result
 
 
