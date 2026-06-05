@@ -51,16 +51,15 @@ source ../yohane/activate_and_run.sh
 
 ```
 demo/
-├── spica-terrible-input.ass    # 原始 k 时值 ASS（来自 karaoke.vmoe.info）
+├── spica-terrible-furigana.ass # HINANA 输出示例（振假名标注 + yohane 强制对齐）
 └── spica-terrible-lyrics.txt   # 歌词文本
 ```
 
-准备好音频文件后运行：
+运行命令参考：
 
 ```bash
 hinana /path/to/spica-terrible.mp4 \
   demo/spica-terrible-lyrics.txt \
-  --source-ass demo/spica-terrible-input.ass \
   --mode furigana \
   -o result.ass
 ```
@@ -134,7 +133,7 @@ HF_TOKEN=hf_...           # HuggingFace token（加速模型下载）
 hinana/
 ├── setup.sh                     # 一键安装（含 yohane）
 ├── demo/
-│   ├── spica-terrible-input.ass    # 示例输入 ASS（南ことり - スピカテリブル）
+│   ├── spica-terrible-furigana.ass # 示例输出 ASS（南ことり - スピカテリブル）
 │   └── spica-terrible-lyrics.txt
 ├── jpkara/
 │   ├── pipeline.py              # 主流程（RL→LLM→pykakasi→yohane→ASS）
