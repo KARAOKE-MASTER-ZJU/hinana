@@ -26,23 +26,56 @@
 
 - **说话人保留**：从模板 ASS 读取 Name 字段，输出时原样写回
 
-## 快速开始
+## 安装
 
 ```bash
-# 1. 克隆并安装（需要已安装 yohane）
 git clone https://github.com/KARAOKE-MASTER-ZJU/hinana
 cd hinana
-uv pip install -e . --python ~/yohane/.venv/bin/python
-
-# 2. 配置 LLM（可选，推荐）
-cp .env.example .env
-# 编辑 .env：OPENAI_BASE_URL、OPENAI_API_KEY、OPENAI_MODEL
-
-# 3. 运行
-hinana song.mp4 lyrics.txt --mode furigana -o output.ass
+bash setup.sh
 ```
 
-## 使用方式
+`setup.sh` 会自动完成：
+1. clone [yohane](https://github.com/Japan7/yohane) 到 `../yohane/`
+2. 创建 yohane 的 venv 并安装 torch / torchaudio 等依赖（首次约 2-3 GB）
+3. 将 hinana 安装到同一 venv 中
+
+安装完成后激活环境：
+
+```bash
+source ../yohane/activate_and_run.sh
+```
+
+## Demo：星のテリブル（スピカテリブル）
+
+项目自带 `demo/` 目录包含示例文件（南ことり - スピカテリブル）：
+
+```
+demo/
+├── spica-terrible-input.ass    # 原始 k 时值 ASS（来自 karaoke.vmoe.info）
+└── spica-terrible-lyrics.txt   # 歌词文本
+```
+
+准备好音频文件后运行：
+
+```bash
+hinana /path/to/spica-terrible.mp4 \
+  demo/spica-terrible-lyrics.txt \
+  --source-ass demo/spica-terrible-input.ass \
+  --mode furigana \
+  -o result.ass
+```
+
+输入行示例（基础 k 时值）：
+```
+{\k33}迷{\k29}い{\k31}の{\k33}振{\k40}り{\k31}子{\k96}が{\k25}と{\k27}ま{\k27}ら{\k29}な{\k166}い
+```
+
+输出行示例（振假名标注后）：
+```
+{\k33}迷|<ま{\k29}#|<よ{\k31}い{\k33}の{\k33}振|<ふ{\k40}#|<り{\k31}子|<こ{\k96}が{\k25}と{\k27}ま{\k27}ら{\k29}な{\k166}い
+```
+
+## 快速开始
 
 ### 基本用法
 
@@ -50,7 +83,7 @@ hinana song.mp4 lyrics.txt --mode furigana -o output.ass
 hinana song.mp4 lyrics.txt
 ```
 
-### 从模板 ASS 运行（保留时间轴结构和说话人）
+### 从模板 ASS 运行（保留说话人 / 非日语行）
 
 ```bash
 hinana song.mp4 lyrics.txt --source-ass template.ass -o result.ass
@@ -74,7 +107,7 @@ hinana song.mp4 lyrics.txt --mode furigana romaji
 hinana <song> <lyrics> [选项]
 
 选项：
-  --source-ass FILE   模板 ASS（用于保留非日语行时间轴和说话人）
+  --source-ass FILE   模板 ASS（保留非日语行时间轴和说话人）
   --romaji FILE       罗马音文件（跳过自动转换）
   --mode MODE         furigana / kana / romaji，可多选  [默认: furigana]
   --output FILE       输出 .ass 路径
@@ -92,26 +125,30 @@ hinana <song> <lyrics> [选项]
 OPENAI_BASE_URL=https://api.openai.com/v1
 OPENAI_API_KEY=sk-...
 OPENAI_MODEL=gpt-4o-mini
-HF_TOKEN=hf_...
+HF_TOKEN=hf_...           # HuggingFace token（加速模型下载）
 ```
 
 ## 项目结构
 
 ```
 hinana/
+├── setup.sh                     # 一键安装（含 yohane）
+├── demo/
+│   ├── spica-terrible-input.ass    # 示例输入 ASS（南ことり - スピカテリブル）
+│   └── spica-terrible-lyrics.txt
 ├── jpkara/
-│   ├── pipeline.py          # 主流程（RL→LLM→pykakasi→yohane→ASS）
-│   ├── cli.py               # CLI 入口
-│   ├── ass_reader.py        # 模板 ASS 解析
+│   ├── pipeline.py              # 主流程（RL→LLM→pykakasi→yohane→ASS）
+│   ├── cli.py                   # CLI 入口
+│   ├── ass_reader.py            # 模板 ASS 解析
 │   ├── reading/
-│   │   ├── analyzer.py      # 三阶段读音分析器
-│   │   ├── llm.py           # LLM 注音客户端
-│   │   ├── rl_dict.py       # RhythmicaLyrics 词典
-│   │   └── kana.py          # 假名/罗马音转换表
+│   │   ├── analyzer.py          # 三阶段读音分析器
+│   │   ├── llm.py               # LLM 注音客户端
+│   │   ├── rl_dict.py           # RhythmicaLyrics 词典
+│   │   └── kana.py              # 假名/罗马音转换表
 │   └── ass/
-│       ├── formatter.py     # ASS 行格式化（furigana/kana/romaji）
-│       ├── constants.py     # ASS 头部常量
-│       └── yohane_runner.py # yohane 子进程封装
+│       ├── formatter.py         # ASS 行格式化
+│       ├── constants.py         # ASS 头部常量
+│       └── yohane_runner.py     # yohane 子进程封装
 └── tests/
 ```
 

@@ -55,7 +55,13 @@ def run_yohane(
     ydir = Path(yohane_dir) if yohane_dir else _YOHANE_DIR
     run_script = ydir / "run.py"
     if not run_script.exists():
-        raise FileNotFoundError(f"yohane run.py not found at {run_script}")
+        setup_sh = Path(__file__).parent.parent.parent / "setup.sh"
+        raise FileNotFoundError(
+            f"yohane not found at {ydir}\n"
+            f"Run setup.sh to install automatically:\n"
+            f"  bash {setup_sh}\n"
+            f"Or clone manually: git clone https://github.com/Japan7/yohane.git {ydir}"
+        )
 
     with tempfile.NamedTemporaryFile(
         mode="w", suffix=".txt", delete=False, encoding="utf-8"
