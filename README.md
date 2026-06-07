@@ -10,9 +10,9 @@
 
 ```
 日语歌词
-  ↓ ① RhythmicaLyrics 词典（歌词专用，7天缓存）
-  ↓ ② LLM 注音（OpenAI 兼容 API，整首批量请求）
-  ↓ ③ pykakasi 兜底
+  ↓ ① MeCab 分词（fugashi + unidic-lite）或 pykakasi 分词
+  ↓ ② RhythmicaLyrics 词典（歌词专用，7天缓存）
+  ↓ ③ LLM 注音（仅对 RL 未覆盖行，OpenAI 兼容 API）
 平假名读音 → yohane 强制对齐 → k 时值 ASS
 ```
 
@@ -52,6 +52,7 @@ source ../yohane/activate_and_run.sh
 ```
 demo/
 ├── spica-terrible-furigana.ass # HINANA 输出示例（振假名标注 + yohane 强制对齐）
+├── spica-terrible-romaji.ass   # HINANA 输出示例（汉字+罗马音注音）
 └── spica-terrible-lyrics.txt   # 歌词文本
 ```
 
@@ -72,6 +73,11 @@ hinana /path/to/spica-terrible.mp4 \
 输出行示例（振假名标注后）：
 ```
 {\k33}迷|<ま{\k29}#|<よ{\k31}い{\k33}の{\k33}振|<ふ{\k40}#|<り{\k31}子|<こ{\k96}が{\k25}と{\k27}ま{\k27}ら{\k29}な{\k166}い
+```
+
+输出行示例（汉字+罗马音）：
+```
+{\k33}迷|<ma{\k29}#|<yo{\k31}い{\k33}の{\k33}振|<fu{\k40}#|<ri{\k31}子|<ko{\k96}が{\k25}と{\k27}ま{\k27}ら{\k29}な{\k166}い
 ```
 
 ## 快速开始

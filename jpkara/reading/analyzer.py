@@ -1,4 +1,4 @@
-"""三层读音分析器：RL词典 → LLM → pykakasi。
+"""三层读音分析器：(MeCab|pykakasi)+RL词典 → LLM（仅未覆盖行） → pykakasi兜底。
 
 输出：每个日语行拆成 [(orig_char, hira_mora)] 的 flat mora 列表，
 供 ass/formatter.py 与 k-时值配对。
@@ -32,6 +32,18 @@ def _kakasi():
 
 
 # ─────────────────────────────────────────────────────────
+# 分词（MeCab 优先，pykakasi 兜底）
+# ─────────────────────────────────────────────────────────
+
+def _tokenize(text: str) -> List[Dict]:
+    """返回 [{"orig": str, "hira": str}]，优先 MeCab，否则 pykakasi。"""
+    from .mecab_tokenizer import is_available as mecab_ok, tokenize as mecab_tok
+    if mecab_ok():
+        return mecab_tok(text)
+    return _kakasi().convert(text)
+
+
+# ─────────────────────────────────────────────────────────
 # 字符→mora 分配（kana 锚点法）
 # ─────────────────────────────────────────────────────────
 
@@ -44,21 +56,18 @@ def _distribute(orig: str, hira: str, out: List[Tuple[str, str]]) -> None:
         c = orig[oi]
         if is_kana(c):
             next_c = orig[oi + 1] if oi + 1 < len(orig) else ""
-            # 拗音前瞻：当前假名 + 下一个小書き假名 → 合并成一个 mora
             if next_c and next_c in SMALL_KANA and is_kana(next_c):
                 pair_hira = kata_to_hira(c) + kata_to_hira(next_c)
                 if pair_hira in HIRA_DIGRAPHS:
-                    # 消耗 hi 中对应的两个字符
                     if len(hi) >= 2 and kata_to_hira(hi[0]) + kata_to_hira(hi[1]) == pair_hira:
                         hi.pop(0); hi.pop(0)
                     elif hi and kata_to_hira(hi[0]) == kata_to_hira(c):
                         hi.pop(0)
-                    pair_str = c + next_c  # e.g. 'リュ', 'フォ', 'ティ'
+                    pair_str = c + next_c
                     for hm, _ in hira_to_moras(pair_hira):
                         out.append((pair_str, hm))
                     oi += 2
                     continue
-            # 单字假名（含 っ/ッ，hira_to_moras 已修复末尾独立っ）
             hc = kata_to_hira(c)
             if hi and kata_to_hira(hi[0]) == hc:
                 hi.pop(0)
@@ -66,7 +75,6 @@ def _distribute(orig: str, hira: str, out: List[Tuple[str, str]]) -> None:
                 out.append((c, hm))
             oi += 1
         elif is_kanji(c):
-            # 找下一个 kana 锚点确定汉字块的边界
             end = oi + 1
             while end < len(orig) and is_kanji(orig[end]):
                 end += 1
@@ -88,7 +96,6 @@ def _distribute(orig: str, hira: str, out: List[Tuple[str, str]]) -> None:
                 for hm, _ in moras:
                     out.append((kanji_block[0], hm))
             else:
-                # 用各字单独读音的 mora 数作权重，按比例切分
                 weights = []
                 for ki in kanji_block:
                     sub = _kakasi().convert(ki)
@@ -109,7 +116,7 @@ def _distribute(orig: str, hira: str, out: List[Tuple[str, str]]) -> None:
                         mi += 1
             oi = end
         else:
-            oi += 1  # 跳过标点/空格
+            oi += 1
 
 
 def _pairs_to_char_moras(pairs: List[Tuple[str, str]]) -> CharMoras:
@@ -143,7 +150,7 @@ def _pykakasi_line_romaji(jp_line: str) -> str:
 
 class ReadingAnalyzer:
     """
-    分析整首歌词的读音，优先级：RL词典 → LLM → pykakasi。
+    分析整首歌词读音，优先级：(MeCab|pykakasi)+RL词典 → LLM（仅未覆盖行）→ pykakasi。
 
     用法：
         analyzer = ReadingAnalyzer(llm_client=..., rl_dict=...)
@@ -153,8 +160,8 @@ class ReadingAnalyzer:
 
     def __init__(
         self,
-        llm_client=None,   # LLMReadingClient | None
-        rl_dict=None,      # RLDictionary | None
+        llm_client=None,
+        rl_dict=None,
         use_llm: bool = True,
         use_rl: bool = True,
     ):
@@ -163,81 +170,74 @@ class ReadingAnalyzer:
         self._use_llm = use_llm and llm_client is not None
         self._use_rl = use_rl and rl_dict is not None
 
-        # LLM cache: line_text → Pairs
-        self._llm_cache: Dict[str, List[Tuple[str, str]]] = {}
-        self._llm_prewarmed = False
-
-    def _prewarm_llm(self, lines: List[str]) -> None:
-        """一次性批量 LLM 注音整首歌词并缓存。"""
-        if self._llm_prewarmed or not self._use_llm:
-            return
-        self._llm_prewarmed = True
-        if not self._llm.is_configured():
-            logger.warning("[analyzer] LLM not configured, skipping")
-            return
-        logger.info("[analyzer] calling LLM for %d lines", len(lines))
-        mapping, err = self._llm.annotate_lines(lines)
-        if err:
-            logger.warning("[analyzer] LLM error: %s", err)
-            return
-        for idx, pairs in mapping.items():
-            self._llm_cache[lines[idx]] = pairs
-        logger.info("[analyzer] LLM cached %d/%d lines", len(self._llm_cache), len(lines))
+    def _tokenize_and_rl(self, jp_line: str) -> Tuple[List[Tuple[str, str]], bool]:
+        """
+        用 MeCab/pykakasi 分词，RL 词典覆盖读音。
+        返回 (pairs, all_kanji_covered)。
+        """
+        tokens = _tokenize(jp_line)
+        pairs: List[Tuple[str, str]] = []
+        all_covered = True
+        for tok in tokens:
+            orig = tok["orig"]
+            has_kanji = any(is_kanji(c) for c in orig)
+            rl_reading = self._rl.get(orig) if self._use_rl else None
+            if rl_reading:
+                pairs.append((orig, rl_reading))
+            else:
+                pairs.append((orig, kata_to_hira(tok["hira"])))
+                if has_kanji:
+                    all_covered = False
+        return pairs, all_covered
 
     def analyze_lines(self, jp_lines: List[str]) -> List[CharMoras]:
-        """返回每行的 [(orig_char, hira_mora)] 列表。"""
-        # 批量预热 LLM（单次 HTTP 请求）
-        if self._use_llm:
-            self._prewarm_llm(jp_lines)
+        """
+        返回每行的 [(orig_char, hira_mora)]。
 
-        return [self._analyze_one(line) for line in jp_lines]
+        Pass 1: MeCab/pykakasi + RL 词典（速度快，无副作用）
+        Pass 2: 对 RL 未覆盖行调用 LLM（批量，仅在需要时）
+        """
+        # Pass 1
+        pass1: List[Tuple[List[Tuple[str, str]], bool]] = [
+            self._tokenize_and_rl(line) for line in jp_lines
+        ]
 
-    def _analyze_one(self, jp_line: str) -> CharMoras:
-        # 1. LLM cache
-        if self._use_llm and jp_line in self._llm_cache:
-            logger.debug("[analyzer] LLM hit: %s", jp_line[:20])
-            return _pairs_to_char_moras(self._llm_cache[jp_line])
-
-        # 2. RL 词典：逐 token 查询（pykakasi 分词 + RL 读音覆盖）
-        if self._use_rl:
-            tokens = _kakasi().convert(jp_line)
-            pairs: List[Tuple[str, str]] = []
-            all_rl = True
-            for tok in tokens:
-                orig = tok["orig"]
-                rl_reading = self._rl.get(orig)
-                if rl_reading:
-                    logger.debug("[analyzer] RL hit: %s→%s", orig, rl_reading)
-                    pairs.append((orig, rl_reading))
+        # Pass 2: LLM 仅对未完全覆盖的行
+        llm_override: Dict[int, CharMoras] = {}
+        if self._use_llm and self._llm.is_configured():
+            uncov_idx = [i for i, (_, cov) in enumerate(pass1) if not cov]
+            if uncov_idx:
+                uncov_lines = [jp_lines[i] for i in uncov_idx]
+                logger.info(
+                    "[analyzer] RL uncovered %d/%d lines, calling LLM...",
+                    len(uncov_idx), len(jp_lines),
+                )
+                mapping, err = self._llm.annotate_lines(uncov_lines)
+                if err:
+                    logger.warning("[analyzer] LLM error: %s", err)
                 else:
-                    all_rl = False
-                    pairs.append((orig, kata_to_hira(tok["hira"])))
-            if all_rl:
-                return _pairs_to_char_moras(pairs)
-            # 部分命中也用（RL覆盖了正确的，pykakasi 兜底其余）
-            return _pairs_to_char_moras(pairs)
+                    for local_j, pairs in mapping.items():
+                        global_i = uncov_idx[local_j]
+                        llm_override[global_i] = _pairs_to_char_moras(pairs)
+                    logger.info("[analyzer] LLM covered %d lines", len(llm_override))
 
-        # 3. pykakasi 纯回退
-        logger.debug("[analyzer] pykakasi fallback: %s", jp_line[:20])
-        return _pykakasi_char_moras(jp_line)
+        return [
+            llm_override[i] if i in llm_override else _pairs_to_char_moras(pairs)
+            for i, (pairs, _) in enumerate(pass1)
+        ]
 
     def to_romaji_lines(self, jp_lines: List[str]) -> List[str]:
-        """生成对应每行的罗马音字符串（用于 yohane 输入）。"""
-        # 预热 LLM
-        if self._use_llm:
-            self._prewarm_llm(jp_lines)
-
+        """生成对应每行的罗马音字符串（yohane 输入格式）。"""
         result = []
         for line in jp_lines:
-            # 从 LLM 缓存生成罗马音（更准确）
-            if self._use_llm and line in self._llm_cache:
-                pairs = self._llm_cache[line]
-                from .kana import hira_to_moras as _h2m
-                words = []
-                for surface, hira in pairs:
-                    moras = _h2m(kata_to_hira(hira))
-                    words.append("".join(rom for _, rom in moras))
-                result.append(" ".join(w for w in words if w))
-            else:
-                result.append(_pykakasi_line_romaji(line))
+            tokens = _tokenize(line)
+            words = []
+            for tok in tokens:
+                orig = tok["orig"]
+                rl = self._rl.get(orig) if self._use_rl else None
+                hira = kata_to_hira(rl if rl else tok["hira"])
+                rom = "".join(r for _, r in hira_to_moras(hira))
+                if rom:
+                    words.append(rom)
+            result.append(" ".join(words) if words else _pykakasi_line_romaji(line))
         return result

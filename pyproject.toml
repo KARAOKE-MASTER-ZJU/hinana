@@ -13,6 +13,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+mecab = ["fugashi>=1.3", "unidic-lite>=1.0"]
 dev = ["pytest>=8", "ruff"]
 
 [project.scripts]

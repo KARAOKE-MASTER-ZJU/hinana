@@ -26,11 +26,11 @@ echo "→ Installing yohane + torch (this may take several minutes)..."
 cd "$YOHANE_DIR"
 uv sync --extra cli
 
-# 3. Install hinana into the same venv
+# 3. Install hinana (+ MeCab分词可选依赖) into the same venv
 echo ""
-echo "→ Installing hinana..."
+echo "→ Installing hinana + MeCab tokenizer (fugashi + unidic-lite)..."
 cd "$SCRIPT_DIR"
-uv pip install -e . --python "$YOHANE_DIR/.venv/bin/python"
+uv pip install -e ".[mecab]" --python "$YOHANE_DIR/.venv/bin/python"
 
 echo ""
 echo "✓ 安装完成！"
