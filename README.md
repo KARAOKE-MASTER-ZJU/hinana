@@ -26,6 +26,38 @@
 
 - **说话人保留**：从模板 ASS 读取 Name 字段，输出时原样写回
 
+## 前置要求
+
+### uv（Python 包管理器）
+
+`setup.sh` 依赖 [uv](https://docs.astral.sh/uv/getting-started/installation/) 管理虚拟环境：
+
+```bash
+# Linux / macOS
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# Windows (PowerShell)
+powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
+```
+
+### HuggingFace 访问
+
+强制对齐模型 `NextFire/mms-300m-ForcedAligner-karaoke-ja-Latn` 为**受限模型**，需要：
+
+1. 在 [HuggingFace](https://huggingface.co/NextFire/mms-300m-ForcedAligner-karaoke-ja-Latn) 上申请访问权限
+2. 获取 [HuggingFace Token](https://huggingface.co/settings/tokens) 并写入环境变量：
+
+```bash
+export HF_TOKEN=hf_xxxxxxxxxxxxxxxxxxxx
+# 或写入 .env 文件（hinana 启动时自动读取）
+echo "HF_TOKEN=hf_xxxxxxxxxxxxxxxxxxxx" > .env
+```
+
+> **国内网络**：如果无法直连 HuggingFace，可使用镜像站：
+> ```bash
+> export HF_ENDPOINT=https://hf-mirror.com
+> ```
+
 ## 安装
 
 ```bash
@@ -37,7 +69,7 @@ bash setup.sh
 `setup.sh` 会自动完成：
 1. clone [yohane](https://github.com/Japan7/yohane) 到 `../yohane/`
 2. 创建 yohane 的 venv 并安装 torch / torchaudio 等依赖（首次约 2-3 GB）
-3. 将 hinana 安装到同一 venv 中
+3. 将 hinana 安装到同一 venv 中（含 MeCab 分词器）
 
 安装完成后激活环境：
 
